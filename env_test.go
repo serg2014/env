@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type unmarshaler struct {
@@ -1098,6 +1100,59 @@ func TestCustomParser(t *testing.T) {
 		isEqual(t, cfg.Foo.name, "test3")
 		isEqual(t, cfg.Other.Name, "test2")
 		isEqual(t, cfg.Other.Foo.name, "test3")
+	}
+
+	for i := 0; i < 10; i++ {
+		t.Run(fmt.Sprintf("%d", i), runtest)
+	}
+}
+
+func TestCustomParserWIthDefault(t *testing.T) {
+	type foo struct {
+		name string
+	}
+
+	type bar struct {
+		Name string `env:"OTHER_CUSTOM"`
+		Foo  *foo   `env:"BLAH_CUSTOM"`
+	}
+
+	type config struct {
+		Var   foo  `env:"VAR_CUSTOM"`
+		Foo   *foo `env:"BLAH_CUSTOM"`
+		Other *bar
+	}
+
+	t.Setenv("VAR_CUSTOM", "test")
+	t.Setenv("OTHER_CUSTOM", "test2")
+	t.Setenv("BLAH_CUSTOM", "test3")
+
+	runtest := func(t *testing.T) {
+		t.Helper()
+		cfg := &config{
+			Var: foo{"var"},
+			Foo: &foo{"foo"},
+			Other: &bar{
+				Name: "name",
+				Foo:  &foo{"foo"},
+			},
+		}
+		err := ParseWithOptions(cfg, Options{FuncMap: map[reflect.Type]ParserFunc{
+			reflect.TypeOf(foo{}): func(v string) (interface{}, error) {
+				return foo{name: v}, nil
+			},
+		}})
+
+		isNoErr(t, err)
+		expect := &config{
+			Var: foo{"test"},
+			Foo: &foo{"test3"},
+			Other: &bar{
+				Name: "test2",
+				Foo:  &foo{"test3"},
+			},
+		}
+		assert.Equal(t, expect, cfg)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -2337,7 +2392,6 @@ func TestIssue339(t *testing.T) {
 		t.Setenv("BOOL", strconv.FormatBool(newValue))
 
 		isNoErr(t, Parse(&cfg))
-
 		isEqual(t, &newValue, cfg.BoolPtr)
 	})
 
